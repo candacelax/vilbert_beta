@@ -7,12 +7,24 @@ import shelve
 import magic #pip install python-magic
 from multiprocessing import Pool
 from tqdm import tqdm
+import argparse
 
 headers = {
     #'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/71.0.3578.98 Safari/537.36',
     'User-Agent':'Googlebot-Image/1.0', # Pretend to be googlebot
     'X-Forwarded-For': '64.18.15.200'
 }
+
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--train', action='store_true', help='Download training data')
+    parser.add_argument('--val', dest='validation', action='store_true', help='Download validation data')
+    parser.add_argument('--num', dest='num_processes', default=32, type=int,
+                        help='number of processes in the pool can be larger than cores')
+    parser.add_argument('--images_per_part', default=100, type=int,
+                        help='chunk_size is how many images per chunk per process'
+                        'changing this resets progress when restarting.')
+    return parser.parse_args()
 
 def _df_split_apply(tup_arg):
     split_ind, subset, func = tup_arg
@@ -74,6 +86,7 @@ def check_download(row):
 def download_image(row):
     fname = _file_name(row)
     # Skip Already downloaded, retry others later
+
     if os.path.isfile(fname):
         row['status'] = 200
         row['file'] = fname
@@ -90,7 +103,7 @@ def download_image(row):
         # log errors later, set error as 408 timeout
         row['status'] = 408
         return row
-   
+
     if response.ok:
         try:
             with open(fname, 'wb') as out_file:
@@ -120,21 +133,24 @@ def df_from_shelve(chunk_size, func, dataset_name):
         df = pd.concat([results[str(k)][1] for k in keylist], sort=True)
     return df
 
-# number of processes in the pool can be larger than cores
-num_processes = 32
-# chunk_size is how many images per chunk per process - changing this resets progress when restarting.
-images_per_part = 100
 
-data_name = "validation"
-df = open_tsv("Validation_GCC-1.1.0-Validation.tsv", data_name)
-df_multiprocess(df=df, processes=num_processes, chunk_size=images_per_part, func=download_image, dataset_name=data_name)
-df = df_from_shelve(chunk_size=images_per_part, func=download_image, dataset_name=data_name)
-df.to_csv("downloaded_%s_report.tsv.gz" % data_name, compression='gzip', sep='\t', header=False, index=False)
-print("Saved.")
+if __name__ == '__main__':
+    args = parse_args()
 
-data_name = "training"
-df = open_tsv("Train_GCC-training.tsv",data_name)
-df_multiprocess(df=df, processes=num_processes, chunk_size=images_per_part, func=download_image, dataset_name=data_name)
-df = df_from_shelve(chunk_size=images_per_part, func=download_image, dataset_name=data_name)
-df.to_csv("downloaded_%s_report.tsv.gz" % data_name, compression='gzip', sep='\t', header=False, index=False)
-print("Saved.")
+    if args.validation:
+        print('Downloading validation data..')
+        data_name = "validation"
+        df = open_tsv("Validation_GCC-1.1.0-Validation.tsv", data_name)
+        df_multiprocess(df=df, processes=args.num_processes, chunk_size=args.images_per_part, func=download_image, dataset_name=data_name)
+        df = df_from_shelve(chunk_size=args.images_per_part, func=download_image, dataset_name=data_name)
+        df.to_csv("downloaded_%s_report.tsv.gz" % data_name, compression='gzip', sep='\t', header=False, index=False)
+        print("Saved.")
+
+    if args.train:
+        print('Downloading training data..')
+        data_name = "training"
+        df = open_tsv("Train_GCC-training.tsv",data_name)
+        df_multiprocess(df=df, processes=args.num_processes, chunk_size=args.images_per_part, func=download_image, dataset_name=data_name)
+        df = df_from_shelve(chunk_size=args.images_per_part, func=download_image, dataset_name=data_name)
+        df.to_csv("downloaded_%s_report.tsv.gz" % data_name, compression='gzip', sep='\t', header=False, index=False)
+        print("Saved.")
