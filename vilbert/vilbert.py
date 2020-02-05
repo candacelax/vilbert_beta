@@ -1563,7 +1563,7 @@ class VILBertForVLTasks(BertPreTrainedModel):
         vision_logit = self.vision_logit(self.dropout(sequence_output_v)) + ((1.0 - image_attention_mask)* -10000.0).unsqueeze(2).to(dtype=next(self.parameters()).dtype)
         linguisic_logit = self.linguisic_logit(self.dropout(sequence_output_t))
 
-        return vil_prediction, vil_logit, vil_binary_prediction, vision_prediction, vision_logit, linguisic_prediction, linguisic_logit
+        return vil_prediction, vil_logit, vil_binary_prediction, vision_prediction, vision_logit, linguisic_prediction, linguisic_logit, sequence_output_t
 
 class SimpleClassifier(nn.Module):
     def __init__(self, in_dim, hid_dim, out_dim, dropout):
