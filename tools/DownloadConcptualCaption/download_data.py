@@ -8,6 +8,9 @@ import magic #pip install python-magic
 from multiprocessing import Pool
 from tqdm import tqdm
 import argparse
+import re
+
+# python download_data.py --train --train_path /storage/ccross/vilbert_beta/data/conceptual-captions/Train_GCC-training.tsv --format_for_bash --train
 
 headers = {
     #'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/71.0.3578.98 Safari/537.36',
@@ -17,8 +20,11 @@ headers = {
 
 def parse_args():
     parser = argparse.ArgumentParser()
+    parser.add_argument('--format_for_bash', action='store_true', help='just write list of files')
     parser.add_argument('--train', action='store_true', help='Download training data')
     parser.add_argument('--val', dest='validation', action='store_true', help='Download validation data')
+    parser.add_argument('--train_path', type=str, help='path to training TSV file')
+    parser.add_argument('--val_path', type=str, help='path to validation TSV file')
     parser.add_argument('--num', dest='num_processes', default=32, type=int,
                         help='number of processes in the pool can be larger than cores')
     parser.add_argument('--images_per_part', default=100, type=int,
@@ -81,6 +87,7 @@ def check_download(row):
         return row
     if response.ok:
         row['file'] = fname
+
     return row
 
 def download_image(row):
@@ -137,20 +144,66 @@ def df_from_shelve(chunk_size, func, dataset_name):
 if __name__ == '__main__':
     args = parse_args()
 
-    if args.validation:
-        print('Downloading validation data..')
-        data_name = "validation"
-        df = open_tsv("Validation_GCC-1.1.0-Validation.tsv", data_name)
-        df_multiprocess(df=df, processes=args.num_processes, chunk_size=args.images_per_part, func=download_image, dataset_name=data_name)
-        df = df_from_shelve(chunk_size=args.images_per_part, func=download_image, dataset_name=data_name)
-        df.to_csv("downloaded_%s_report.tsv.gz" % data_name, compression='gzip', sep='\t', header=False, index=False)
-        print("Saved.")
+    if args.format_for_bash:
+        splits = []
+        os.makedirs('download-scripts', exist_ok=True)
+        
+        if args.validation:
+            assert args.val_path, 'Path to validation file required!'
+            splits.append( (args.val_path, 'validation') )
+            os.makedirs('validation', exist_ok=True)
+            
+        if args.train:
+            assert args.train_path, 'Path to training file required!'
+            splits.append( (args.train_path, 'training') )
+            os.makedirs('training', exist_ok=True)
 
-    if args.train:
-        print('Downloading training data..')
-        data_name = "training"
-        df = open_tsv("Train_GCC-training.tsv",data_name)
-        df_multiprocess(df=df, processes=args.num_processes, chunk_size=args.images_per_part, func=download_image, dataset_name=data_name)
-        df = df_from_shelve(chunk_size=args.images_per_part, func=download_image, dataset_name=data_name)
-        df.to_csv("downloaded_%s_report.tsv.gz" % data_name, compression='gzip', sep='\t', header=False, index=False)
-        print("Saved.")
+        for fpath, data_dir in splits:
+            df = open_tsv(fpath, data_dir)
+            num_items_per_process = int(len(df) / args.num_processes)
+
+            iterator = df.iterrows()
+            for pid in range(args.num_processes):
+                print(f'on {pid} script')
+                with open(f'download-scripts/{data_dir}_{pid}.sh', 'w') as f:
+                    for _ in range(num_items_per_process):
+                        if _ % 50000 == 0:
+                            print(f'on {_} item')
+                        try:
+                            idx, row = next(iterator)
+                            fname = _file_name(row)
+                            url = row.url
+                            for char in ['?', '(', ')', '&']:
+                                url = re.sub(f'\{char}', f'\{char}', url)
+                                
+                            if idx % 10000 == 0:
+                                f.write(f'echo "on item {idx} of script {pid}"\n')
+                            
+                            f.write(f'wget -nc --timeout=3 -O {fname} {url}\n')
+                        except StopIteration:
+                            break
+        
+        
+    else:
+        if args.validation:
+            assert args.val_path, 'Path to validation file required!'
+            print('Downloading validation data..')
+            df = open_tsv(args.val_path, 'validation')
+            df_multiprocess(df=df, processes=args.num_processes, chunk_size=args.images_per_part,
+                            func=download_image, dataset_name=data_name)
+            df = df_from_shelve(chunk_size=args.images_per_part, func=download_image, dataset_name=data_name)
+            df.to_csv("downloaded_%s_report.tsv.gz" % data_name, compression='gzip', sep='\t', header=False, index=False)
+            print("Saved.")
+
+        if args.train:
+            assert args.train_path, 'Path to training file required!'
+            print('Downloading training data..')
+            df = open_tsv(args.train_path, 'training')
+            df_multiprocess(df=df, processes=args.num_processes, chunk_size=args.images_per_part,
+                            func=download_image, dataset_name=data_name)
+            df = df_from_shelve(chunk_size=args.images_per_part, func=download_image, dataset_name=data_name)
+            df.to_csv("downloaded_%s_report.tsv.gz" % data_name, compression='gzip', sep='\t', header=False, index=False)
+            print("Saved.")
+
+
+
