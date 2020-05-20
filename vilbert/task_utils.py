@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import sys
+import yaml
 
 import torch
 import torch.nn.functional as F
@@ -328,7 +329,6 @@ def LoadDatasetEval(args, task_cfg, ids):
 
     return task_batch_size, task_num_iters, task_ids, task_datasets_val, task_dataloader_val
 
-
 def compute_score_with_logits(logits, labels):
     logits = torch.max(logits, 1)[1].data  # argmax
     one_hots = torch.zeros(*labels.size()).cuda()
@@ -363,6 +363,18 @@ def EvaluatingModel(args, task_cfg, device, task_id, batch, model, task_dataload
         input_mask = input_mask.view(-1, input_mask.size(2))
         segment_ids = segment_ids.view(-1, segment_ids.size(2))
         co_attention_mask = co_attention_mask.view(-1, co_attention_mask.size(2), co_attention_mask.size(3))
+    else:
+        batch_size = features.size(0)
+        max_num_bbox = features.size(1)
+        num_options = question.size(1)
+        features = features.view(-1, features.size(2), features.size(3))
+        spatials = spatials.view(-1, spatials.size(2), spatials.size(3))
+        image_mask = image_mask.view(-1, image_mask.size(2))
+        question = question.view(-1, question.size(2))
+        input_mask = input_mask.view(-1, input_mask.size(2))
+        segment_ids = segment_ids.view(-1, segment_ids.size(2))
+        co_attention_mask = co_attention_mask.view(-1, co_attention_mask.size(2), co_attention_mask.size(3))
+        
 
     with torch.no_grad():
         vil_prediction, vil_logit, vil_binary_prediction, vision_prediction, vision_logit, linguisic_prediction, linguisic_logit \
