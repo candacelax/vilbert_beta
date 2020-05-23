@@ -202,7 +202,7 @@ class ImageFeaturesH5ReaderWithObjClasses(ImageFeaturesH5Reader):
                              .reshape(num_boxes, 2048)
                 boxes = np.frombuffer(base64.b64decode(item['boxes']), dtype=np.float32)\
                           .reshape(num_boxes, 4)
-                classes = np.frombuffer(base64.b64decode(item['classes']), dtype=np.float32)
+                cls_indices = np.frombuffer(base64.b64decode(item['classes'])).astype(np.int32)
                 g_feat = np.sum(features, axis=0) / num_boxes
                 num_boxes = num_boxes + 1
                 features = np.concatenate([np.expand_dims(g_feat, axis=0), features], axis=0)
@@ -223,7 +223,7 @@ class ImageFeaturesH5ReaderWithObjClasses(ImageFeaturesH5Reader):
                 g_location_ori = np.array([0,0,image_w,image_h,image_w*image_h])
                 image_location_ori = np.concatenate([np.expand_dims(g_location_ori, axis=0), image_location_ori], axis=0)
 
-        return features, num_boxes, image_location, image_location_ori, classes
+        return features, num_boxes, image_location, image_location_ori, cls_indices
 
     def keys(self) -> List[int]:
         return self._image_ids
